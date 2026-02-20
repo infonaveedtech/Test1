@@ -1,0 +1,114 @@
+{
+  "query": "What is the Client who has started accumulation of a ONE symbol within his last 50 trades. Tell me complete info of it",
+  "chapters_selected": [
+    "Trades",
+    "Clients"
+  ],
+  "fewshots": [
+    {
+      "id": "fs-083",
+      "title": "Complete annual trading report for a specific client (all activity types – 2024 example)",
+      "question": "Give me a complete trading report of the client BAI CARTEIRA PROPRIA for the year 2024. Complete information",
+      "tables": [
+        "ATS.EDS_CLIENTS",
+        "ATS.ORDERS",
+        "ATS.TRADES",
+        "ATS.REJECTED_ORDERS",
+        "ATS.SETTLEMENT_LEVY_DATA",
+        "ATS.REPO_CONTRACTS"
+      ]
+    },
+    {
+      "id": "fs-080",
+      "title": "Complete repo transaction cycle (leg 1 to leg 2) with all details for January 2025",
+      "question": "Give me a complete cycle of a repo market transaction from its leg 1 to leg 2 with all the information for January",
+      "tables": [
+        "ATS.REPO_CONTRACTS",
+        "ATS.SYMBOLS",
+        "ATS.EXCHANGES",
+        "ATS.SUBSCRIBED_BROKERS",
+        "ATS.EDS_CLIENTS",
+        "ATS.USERS",
+        "ATS.SETTLEMENT_TYPES"
+      ]
+    },
+    {
+      "id": "fs-085",
+      "title": "Complete annual report for a single symbol (all domains – 2024 example)",
+      "question": "Give me a complete report for the symbol BCGAAAAA for the year 2024",
+      "tables": [
+        "ATS.SYMBOLS",
+        "ATS.SYMBOL_DAILY_INDICATORS",
+        "ATS.SYMBOL_INDICATORS",
+        "ATS.ORDERS",
+        "ATS.TRADES",
+        "ATS.REJECTED_ORDERS",
+        "ATS.REPO_CONTRACTS"
+      ]
+    },
+    {
+      "id": "fs-028",
+      "title": "Clients with >100 trades in 2024 and their most traded symbol",
+      "question": "Which clients executed more than 100 trades (buyer + seller) in 2024? For each, show total trades and their most traded symbol.",
+      "tables": [
+        "ATS.TRADES",
+        "ATS.EDS_CLIENTS",
+        "ATS.SYMBOLS"
+      ]
+    },
+    {
+      "id": "fs-030",
+      "title": "Clients with >5 orders last month but fewer executions",
+      "question": "List clients who placed more than 5 orders in last month but had lesser executions with their count",
+      "tables": [
+        "ATS.ORDERS",
+        "ATS.TRADES",
+        "ATS.EDS_CLIENTS"
+      ]
+    }
+  ],
+  "glossary": [
+    {
+      "id": "gl-TRD-overview-v1",
+      "doc_type": "chapter_overview",
+      "chapter": "Trades",
+      "section": null,
+      "title": "Trades — Overview"
+    },
+    {
+      "id": "gl-CLIENT-report-v1",
+      "doc_type": "recipe",
+      "chapter": "Clients",
+      "section": "Reporting",
+      "title": "Complete annual (or periodic) trading report for a single client – canonical pattern"
+    },
+    {
+      "id": "gl-TRD-client-buy-sell-ratio-v1",
+      "doc_type": "recipe",
+      "chapter": "Trades",
+      "section": "Client notional & ratios",
+      "title": "Client Buy vs Sell notional and Buy/Sell ratio (TRADES)"
+    },
+    {
+      "id": "gl-TRD-circular-wash-v1",
+      "doc_type": "recipe",
+      "chapter": "Trades",
+      "section": "Surveillance & integrity",
+      "title": "Circular trading / wash-trade detection (round-trip patterns)"
+    },
+    {
+      "id": "gl-TRD-joins-v1",
+      "doc_type": "recipe",
+      "chapter": "Trades",
+      "section": "Typical joins",
+      "title": "Trades — canonical joins"
+    },
+    {
+      "id": "gl-TRD-participants-v1",
+      "doc_type": "section_note",
+      "chapter": "Trades",
+      "section": "Participants & attribution",
+      "title": "Trades — participants and attribution"
+    }
+  ]
+}

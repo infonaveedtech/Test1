@@ -1,0 +1,653 @@
+User Query:
+What is the Client who has started accumulation of a ONE symbol within his last 50 trades. Tell me complete info of it
+
+<SCHEMA_CARD>
+# Schema Card — Oracle (owner: ATS)
+
+Scope: ATS.SYMBOL_DAILY_INDICATORS, ATS.SYMBOL_INDICATORS, ATS.BEST_MKT, ATS.SYMBOLS, ATS.EXCHANGES, ATS.ORDERS, ATS.SYMBOL_MARKETS, ATS.FLAGS, ATS.ORDER_TYPES, ATS.ORDER_STATES, ATS.SUBSCRIBED_BROKERS, ATS.EDS_CLIENTS, ATS.USERS, ATS.TRADES, ATS.CANCELLED_TRADES, ATS.NEGOTIATED_TRADES, ATS.TRADE_STATES, ATS.SETTLEMENT_TYPES, ATS.SYMBOL_TYPES, ATS.REJECTED_ORDERS, ATS.REJECTIONS, ATS.ATS_LEVY_DATA_LOG, ATS.SETTLEMENT_LEVY_DATA, ATS.LEVIES, ATS.LEVY_TYPES, ATS.LEVY_RANGES, ATS.LEVY_CRITERIA, ATS.LEVY_INFO, ATS.LEVY_MEMBER_TYPES, ATS.LEVY_SECURITIES, ATS.REPO_CONTRACTS, ATS.REPO_CONTRACTS_CANCELLED, ATS.REPO_LOG
+
+
+Oracle helpers:
+  - Date buckets: TRUNC(<date_col>, 'DD'|'MM'|'YYYY')
+  - Range filter: col >= DATE 'YYYY-MM-DD' AND col < DATE 'YYYY-MM-DD'
+  - Row limit: FETCH FIRST <N> ROWS ONLY  (fallback: WHERE ROWNUM <= N)
+  - Percentiles: PERCENTILE_CONT(p) WITHIN GROUP (ORDER BY expr)
+  - Median: MEDIAN(expr)
+  - Window: LAG/LEAD, AVG(...) OVER (PARTITION BY ... ORDER BY ... ROWS BETWEEN ...)
+  - ANSI JOINs only; no legacy (+) joins.
+
+Joins (preferred):
+
+  - SDI ↔ SYMBOLS on (SYMBOL_DAILY_INDICATORS.SYMBOL_ID = SYMBOLS.SYMBOL_ID)
+  - SDI ↔ EXCHANGES on (SYMBOL_DAILY_INDICATORS.EXCHANGE_ID = EXCHANGES.EXCHANGE_ID)
+  - SI  ↔ SYMBOLS on (SYMBOL_INDICATORS.SYMBOL_ID = SYMBOLS.SYMBOL_ID)
+  - SI  ↔ EXCHANGES on (SYMBOL_INDICATORS.EXCHANGE_ID = EXCHANGES.EXCHANGE_ID)
+  - BM  ↔ SYMBOLS on (BEST_MKT.SYMBOL_ID = SYMBOLS.SYMBOL_ID)
+  - BM  ↔ EXCHANGES on (BEST_MKT.EXCHANGE_ID = EXCHANGES.EXCHANGE_ID)
+  - ORDERS ↔ SYMBOLS on (ORDERS.SYMBOL_ID = SYMBOLS.SYMBOL_ID)
+  - ORDERS ↔ EXCHANGES on (ORDERS.EXCHANGE_ID = EXCHANGES.EXCHANGE_ID)
+  - ORDERS ↔ SYMBOL_MARKETS on (ORDERS.SYMBOL_ID = SYMBOL_MARKETS.SYMBOL_ID AND ORDERS.MARKET_ID = SYMBOL_MARKETS.MARKET_ID AND ORDERS.EXCHANGE_ID = SYMBOL_MARKETS.EXCHANGE_ID)
+  - ORDERS ↔ FLAGS on (ORDERS.FLAG_ID = FLAGS.FLAG_ID)
+  - ORDERS ↔ ORDER_TYPES on (ORDERS.ORDER_TYPE = ORDER_TYPES.ID)
+  - ORDERS ↔ ORDER_STATES on (ORDERS.STATE = ORDER_STATES.STATE_ID)
+  - ORDERS ↔ SUBSCRIBED_BROKERS on (ORDERS.BROKER_ID = SUBSCRIBED_BROKERS.BROKER_ID)
+  - ORDERS ↔ EDS_CLIENTS on (ORDERS.CLIENT_ID = EDS_CLIENTS.CLIENT_ID)
+  - ORDERS ↔ USERS (as USER_ID) on (ORDERS.USER_ID = USERS.USER_ID)
+  - ORDERS ↔ USERS (as TRADER_ID) on (ORDERS.TRADER_ID = USERS.USER_ID)
+  - TRADES ↔ SYMBOLS on (TRADES.SYMBOL_ID = SYMBOLS.SYMBOL_ID)
+  - TRADES ↔ EXCHANGES on (TRADES.EXCHANGE_ID = EXCHANGES.EXCHANGE_ID)
+  - TRADES ↔ SYMBOL_MARKETS on (TRADES.SYMBOL_ID = SYMBOL_MARKETS.SYMBOL_ID AND TRADES.MARKET_ID = SYMBOL_MARKETS.MARKET_ID AND TRADES.EXCHANGE_ID = SYMBOL_MARKETS.EXCHANGE_ID)
+  - TRADES ↔ SUBSCRIBED_BROKERS (buyer) on (TRADES.BUYER_BROKER_ID = SUBSCRIBED_BROKERS.BROKER_ID)
+  - TRADES ↔ SUBSCRIBED_BROKERS (seller) on (TRADES.SELLER_BROKER_ID = SUBSCRIBED_BROKERS.BROKER_ID)
+  - TRADES ↔ EDS_CLIENTS (buyer) on (TRADES.BUYER_CLIENT_ID = EDS_CLIENTS.CLIENT_ID)
+  - TRADES ↔ EDS_CLIENTS (seller) on (TRADES.SELLER_CLIENT_ID = EDS_CLIENTS.CLIENT_ID)
+  - TRADES ↔ USERS (buyer) on (TRADES.BUYER_USER_ID = USERS.USER_ID)
+  - TRADES ↔ USERS (seller) on (TRADES.SELLER_USER_ID = USERS.USER_ID)
+  - TRADES ↔ SETTLEMENT_TYPES on (TRADES.SETTLEMENT_TYPE_ID = SETTLEMENT_TYPES.SETTLEMENT_TYPE_ID)
+  - TRADES ↔ TRADE_STATES on (TRADES.STATE_ID = TRADE_STATES.STATE_ID)
+  - CANCELLED_TRADES ↔ EXCHANGES on (CANCELLED_TRADES.EXCHANGE_ID = EXCHANGES.EXCHANGE_ID)
+  - CANCELLED_TRADES ↔ SYMBOLS on (CANCELLED_TRADES.SYMBOL_ID = SYMBOLS.SYMBOL_ID)
+  - CANCELLED_TRADES ↔ SUBSCRIBED_BROKERS (buyer/seller) on (…BROKER_ID = SUBSCRIBED_BROKERS.BROKER_ID)
+  - CANCELLED_TRADES ↔ EDS_CLIENTS (buyer/seller) on ((BUYER OR SELLER HERE BEFORE CLIENT ID)…CLIENT_ID = EDS_CLIENTS.CLIENT_ID) i.e for Buy side, BUYER_CLIENT_ID = EDS_CLIENTS.CLIENT_ID
+  - [soft] CANCELLED_TRADES ↔ TRADES on ((BUYER_ORDER_NO, SELLER_ORDER_NO, EXCHANGE_ID) matching)
+  - NEGOTIATED_TRADES ↔ SYMBOLS on (NEGOTIATED_TRADES.SYMBOL_ID = SYMBOLS.SYMBOL_ID)
+  - NEGOTIATED_TRADES ↔ EXCHANGES on (NEGOTIATED_TRADES.EXCHANGE_ID = EXCHANGES.EXCHANGE_ID)
+  - NEGOTIATED_TRADES ↔ SUBSCRIBED_BROKERS (sides) on (…BROKER_ID = SUBSCRIBED_BROKERS.BROKER_ID)
+  - NEGOTIATED_TRADES ↔ EDS_CLIENTS (sides) on (…CLIENT_ID = EDS_CLIENTS.CLIENT_ID)
+  - [soft] NEGOTIATED_TRADES ↔ TRADES on (ORDER_NO/COUNTER_ORDER_NO ↔ BUYER_ORDER_NO/SELLER_ORDER_NO, same EXCHANGE_ID)
+  - REJECTED_ORDERS ↔ REJECTIONS on (REJECTED_ORDERS.REJECTION_ID = REJECTIONS.REJECTION_ID)
+  - REJECTED_ORDERS ↔ SYMBOLS on (REJECTED_ORDERS.SYMBOL_ID = SYMBOLS.SYMBOL_ID)
+  - REJECTED_ORDERS ↔ EXCHANGES on (REJECTED_ORDERS.EXCHANGE_ID = EXCHANGES.EXCHANGE_ID)
+  - REJECTED_ORDERS ↔ SUBSCRIBED_BROKERS on (REJECTED_ORDERS.BROKER_ID = SUBSCRIBED_BROKERS.BROKER_ID)
+  - REJECTED_ORDERS ↔ EDS_CLIENTS on (REJECTED_ORDERS.CLIENT_ID = EDS_CLIENTS.CLIENT_ID)
+  - REJECTED_ORDERS ↔ USERS (as USER_ID) on (REJECTED_ORDERS.USER_ID = USERS.USER_ID)
+  - REJECTED_ORDERS ↔ USERS (as TRADER_ID) on (REJECTED_ORDERS.TRADER_ID = USERS.USER_ID)
+  - ATS_LEVY_DATA_LOG ↔ LEVIES on (ATS_LEVY_DATA_LOG.LEVY_ID = LEVIES.LEVY_ID)
+  - ATS_LEVY_DATA_LOG ↔ LEVY_TYPES on (LEVIES.LEVY_TYPE_ID = LEVY_TYPES.ID)
+  - ATS_LEVY_DATA_LOG ↔ SUBSCRIBED_BROKERS on (ATS_LEVY_DATA_LOG.BROKER_ID = SUBSCRIBED_BROKERS.BROKER_ID)
+  - SETTLEMENT_LEVY_DATA ↔ LEVIES on (SETTLEMENT_LEVY_DATA.LEVY_ID = LEVIES.LEVY_ID)
+  - SETTLEMENT_LEVY_DATA ↔ LEVY_TYPES on (LEVIES.LEVY_TYPE_ID = LEVY_TYPES.ID)
+  - SETTLEMENT_LEVY_DATA ↔ SUBSCRIBED_BROKERS on (SETTLEMENT_LEVY_DATA.BROKER_ID = SUBSCRIBED_BROKERS.BROKER_ID)
+  - SETTLEMENT_LEVY_DATA ↔ EDS_CLIENTS on (SETTLEMENT_LEVY_DATA.CLIENT_ID = EDS_CLIENTS.CLIENT_ID)
+  - LEVY_RANGES ↔ LEVY_CRITERIA on (LEVY_RANGES.LEVY_CRITERIA = LEVY_CRITERIA.ID)
+  - LEVY_INFO ↔ LEVIES on (LEVY_INFO.LEVY_ID = LEVIES.LEVY_ID)
+  - REPO_CONTRACTS ↔ SYMBOLS on (REPO_CONTRACTS.SYMBOL_ID = SYMBOLS.SYMBOL_ID)
+  - REPO_CONTRACTS ↔ EXCHANGES on (REPO_CONTRACTS.EXCHANGE_ID = EXCHANGES.EXCHANGE_ID)
+  - REPO_CONTRACTS ↔ SUBSCRIBED_BROKERS (buyer/seller) on (…BROKER_ID = SUBSCRIBED_BROKERS.BROKER_ID)
+  - REPO_CONTRACTS ↔ EDS_CLIENTS (buyer/seller) on (…CLIENT_ID = EDS_CLIENTS.CLIENT_ID)
+  - REPO_CONTRACTS ↔ USERS (buyer/seller) on (…USER_ID = USERS.USER_ID)
+  - REPO_CONTRACTS ↔ SETTLEMENT_TYPES on (REPO_CONTRACTS.SETTLEMENT_TYPE_ID = SETTLEMENT_TYPES.SETTLEMENT_TYPE_ID)
+  - REPO_CONTRACTS_CANCELLED ↔ SYMBOLS/EXCHANGES (same as REPO_CONTRACTS)
+  - REPO_LOG ↔ SYMBOLS / EXCHANGES / SUBSCRIBED_BROKERS / EDS_CLIENTS / USERS (by respective *_ID)
+  - [soft] REPO_LOG ↔ REPO_CONTRACTS on (REPO_LOG.CONTRACT_ID = REPO_CONTRACTS.CONTRACT_NO)
+  - [soft] REPO_CONTRACTS leg pairing on (same CONTRACT_NO; LEG = 1/2)
+
+## ATS.SYMBOL_DAILY_INDICATORS  (grain: symbol_day)
+  Columns:
+    - STATS_DATE DATE  -- PK, NOT NULL
+    - OPEN_PRICE NUMBER(14,4)  -- NOT NULL
+    - CLOSE_PRICE NUMBER(14,4)  -- NOT NULL
+    - LOW_PRICE NUMBER(14,4)  -- NOT NULL
+    - HIGH_PRICE NUMBER(14,4)  -- NOT NULL
+    - TURNOVER NUMBER(10,0)  -- NOT NULL
+    - TURNOVER_VALUE NUMBER(20,4)
+    - TRADES_COUNT NUMBER(10,0)  -- NOT NULL
+    - AVERAGE_PRICE NUMBER(14,4)  -- NOT NULL
+    - CHANGE_PRICE NUMBER(14,4)  -- NOT NULL
+    - PERCENTAGE_CHANGE NUMBER(9,4)
+    - MARKET_ID NUMBER(4,0)  -- PK, FK→ATS.MARKETS(MARKET_ID), NOT NULL
+    - SYMBOL_ID NUMBER(15,0)  -- PK, FK→ATS.SYMBOLS(SYMBOL_ID), NOT NULL
+    - EXCHANGE_ID NUMBER(4,0)  -- PK, FK→ATS.EXCHANGES(EXCHANGE_ID), NOT NULL
+    - OPEN_PRICE_YIELD NUMBER(15,4)
+    - YIELD NUMBER(15,4)
+  Date key: STATS_DATE
+  Dimensions:
+  - SYMBOL_ID
+  - EXCHANGE_ID
+  Measures:
+  - turnover: SUM(TURNOVER_VALUE)
+  - avg_price: AVG(CLOSE_PRICE)
+  - open: OPEN_PRICE
+  - high: HIGH_PRICE
+  - low: LOW_PRICE
+  - close: CLOSE_PRICE
+  - trades_count: SUM(TRADES_COUNT)
+
+
+## ATS.SYMBOL_INDICATORS  (grain: symbol_timestamp)
+  Columns:
+    - ENTRY_DATETIME TIMESTAMP(6)  -- NOT NULL
+    - OPEN NUMBER(14,4)  -- NOT NULL
+    - HIGH NUMBER(14,4)  -- NOT NULL
+    - LOW NUMBER(14,4)  -- NOT NULL
+    - CLOSE NUMBER(14,4)  -- NOT NULL
+    - AVG NUMBER(14,4)  -- NOT NULL
+    - VOLUME NUMBER(10,0)  -- NOT NULL
+    - VALUE NUMBER(15,4)
+    - SYMBOL_ID NUMBER(15,0)  -- FK→ATS.SYMBOL_MARKETS(SYMBOL_ID), NOT NULL
+    - MARKET_ID NUMBER(4,0)  -- FK→ATS.SYMBOL_MARKETS(MARKET_ID), NOT NULL
+    - EXCHANGE_ID NUMBER(4,0)  -- FK→ATS.SYMBOL_MARKETS(EXCHANGE_ID), NOT NULL
+    - TRADES_COUNT NUMBER(10,0)
+    - CHANGE_PRICE NUMBER(14,4)
+    - OPEN_PRICE_YIELD NUMBER(15,4)
+    - YIELD NUMBER(15,4)
+  Date key: ENTRY_DATETIME
+  Dimensions:
+  - SYMBOL_ID
+  - EXCHANGE_ID
+  Measures:
+  - volume: SUM(VOLUME)
+  - turnover: SUM(VALUE)
+  - avg_price: AVG(CLOSE)
+  - open: OPEN
+  - high: HIGH
+  - low: LOW
+  - close: CLOSE
+
+
+## ATS.BEST_MKT  (grain: symbol_timestamp)
+  Columns:
+    - ENTRY_DATETIME TIMESTAMP(9)  -- NOT NULL
+    - BID_ORDER_COUNT NUMBER(8,0)
+    - OFFER_ORDER_COUNT NUMBER(8,0)
+    - BID_VOLUME NUMBER(10,0)
+    - OFFER_VOLUME NUMBER(10,0)
+    - BID_PRICE NUMBER(14,4)
+    - OFFER_PRICE NUMBER(14,4)
+    - SYMBOL_ID NUMBER(15,0)  -- NOT NULL
+    - MARKET_ID NUMBER(4,0)  -- NOT NULL
+    - EXCHANGE_ID NUMBER(4,0)  -- NOT NULL
+  Date key: ENTRY_DATETIME
+  Dimensions:
+  - SYMBOL_ID
+  - EXCHANGE_ID
+  Measures:
+  - bid_price: AVG(BID_PRICE)
+  - offer_price: AVG(OFFER_PRICE)
+  - spread: AVG(OFFER_PRICE - BID_PRICE)
+  - mid: AVG((BID_PRICE + OFFER_PRICE)/2)
+  - bid_volume: SUM(BID_VOLUME)
+  - offer_volume: SUM(OFFER_VOLUME)
+
+
+## ATS.SYMBOLS
+  Columns:
+    - SYMBOL NVARCHAR2(64)  -- NOT NULL
+    - SYMBOL_ID NUMBER(15,0)  -- PK, NOT NULL
+    - COMPANY_ID NUMBER(15,0)  -- FK→ATS.COMPANIES(COMPANY_ID)
+    - FACE_VALUE NUMBER(14,4)
+    - OUTSTANDING_SHARES NUMBER(12,0)
+    - SETTLEMENT_TYPE_ID NUMBER(4,0)  -- FK→ATS.SETTLEMENT_TYPES(SETTLEMENT_TYPE_ID), NOT NULL
+    - SYMBOL_TYPE_ID NUMBER(2,0)  -- FK→ATS.SYMBOL_TYPES(SYMBOL_TYPE_ID), NOT NULL
+    - SYMBOL_GROUP_ID NUMBER(4,0)  -- FK→ATS.SYMBOL_GROUPS(SYMBOL_GROUP_ID), NOT NULL
+    - SYMBOL_CATEGORY_ID NUMBER(2,0)
+    - ACTIVE NUMBER(1,0)  -- NOT NULL
+    - CREATION_DATE DATE  -- NOT NULL
+    - MODIFIED_BY VARCHAR2(32)  -- NOT NULL
+    - MODIFIED_DATE DATE  -- NOT NULL
+    - CURRENCY_ID NUMBER(4,0)  -- FK→ATS.CURRENCY(CURRENCY_ID), NOT NULL
+    - FIRST_TRADING_DAY DATE  -- NOT NULL
+    - ISSUE_PRICE NUMBER(14,4)  -- NOT NULL
+    - ISIN NVARCHAR2(12)  -- NOT NULL
+    - ISSUER_ID NUMBER(6,0)  -- FK→ATS.ISSUER(ISSUER_ID)
+    - CFI NVARCHAR2(20)
+    - FISN NVARCHAR2(35)
+    - LEI NVARCHAR2(20)
+    - HAIRCUT NUMBER(2,0)  -- NOT NULL
+    - FREE_FLOAT_SHARES NUMBER(15,0)
+    - AUTHORIZED_CAPITAL NUMBER(15,0)
+    - ETF_TYPE_ID NUMBER(2,0)  -- FK→ATS.ETF_TYPE(ETF_TYPE_ID)
+
+
+## ATS.EXCHANGES
+  Columns:
+    - EXCHANGE_CODE NVARCHAR2(8)  -- NOT NULL
+    - EXCHANGE_NAME NVARCHAR2(128)  -- NOT NULL
+    - CONTACT_ENTITY_ID NUMBER(10,0)  -- FK→ATS.CONTACT_ENTITIES(CONTACT_ENTITY_ID), NOT NULL
+    - EXCHANGE_ID NUMBER(4,0)  -- PK, NOT NULL
+    - CONNECTIVITY NUMBER(1,0)  -- 0 = CAPAZAR , 1 = FIX 
+    - CREATION_DATE DATE  -- NOT NULL
+    - MODIFIED_BY VARCHAR2(32)  -- NOT NULL
+    - MODIFIED_DATE DATE  -- NOT NULL
+    - ACTIVE NUMBER(1,0)  -- NOT NULL
+    - DESCRIPTION NVARCHAR2(500)
+    - MBO_DEPTH NUMBER(4,0)  -- NOT NULL
+    - MBP_DEPTH NUMBER(4,0)  -- NOT NULL
+    - ALLOW_SHORT_SELL NUMBER(1,0)  -- NOT NULL
+    - CURRENCY_ID NUMBER(4,0)  -- FK→ATS.CURRENCY(CURRENCY_ID)
+
+
+## ATS.ORDERS  (grain: order_event)
+  Columns:
+    - ENTRY_DATETIME TIMESTAMP(6)  -- PK, NOT NULL
+    - ORDER_NO NUMBER(10,0)  -- PK, NOT NULL
+    - VOLUME NUMBER(10,0)  -- NOT NULL
+    - PRICE NUMBER(14,4)  -- NOT NULL
+    - IS_SHORT NVARCHAR2(1)  -- NOT NULL
+    - DISCLOSED_VOLUME NUMBER(10,0)  -- NOT NULL
+    - SIDE NVARCHAR2(1)  -- NOT NULL
+    - TIF DATE
+    - REF_NO VARCHAR2(20)
+    - TRIGGER_PRICE NUMBER(14,4)  -- NOT NULL
+    - TRAILING_STOPLOSS_DIP NUMBER(14,4)  -- NOT NULL
+    - CLIENT_ID NUMBER(20,0)  -- FK→ATS.EDS_CLIENTS(CLIENT_ID), NOT NULL
+    - FLAG_ID NUMBER(2,0)  -- FK→ATS.FLAGS(FLAG_ID)
+    - SYMBOL_ID NUMBER(15,0)  -- PK, FK→ATS.SYMBOL_MARKETS(SYMBOL_ID), NOT NULL
+    - MARKET_ID NUMBER(4,0)  -- PK, FK→ATS.SYMBOL_MARKETS(MARKET_ID), NOT NULL
+    - EXCHANGE_ID NUMBER(4,0)  -- PK, FK→ATS.SYMBOL_MARKETS(EXCHANGE_ID), NOT NULL
+    - BROKER_ID NUMBER(5,0)  -- FK→ATS.SUBSCRIBED_BROKERS(BROKER_ID), NOT NULL
+    - USER_ID NUMBER(30,0)  -- FK→ATS.USERS(USER_ID), NOT NULL
+    - STATE NUMBER(1,0)  -- NOT NULL
+    - TRADER_ID NUMBER(30,0)  -- FK→ATS.USERS(USER_ID)
+    - ORDER_TYPE NUMBER(1,0)  -- NOT NULL
+    - PRICE_TYPE NUMBER(1,0)  -- NOT NULL
+    - STATE_TIME TIMESTAMP(6)
+    - QUOTE_ID NUMBER(10,0)
+    - CUSTODIAN_ID NUMBER(20,0)
+    - MF_VOLUME NUMBER(10,0)
+    - QUEUING_TIME TIMESTAMP(6)
+    - FIX_SESSION VARCHAR2(200)
+    - ORIGINATOR NUMBER(1,0)
+    - YIELD NUMBER(15,4)
+    - ACCRUED_PROFIT NUMBER(24,6)
+    - VALUE NUMBER(24,6)
+    - PRICING_MECHANISM NUMBER(1,0)
+    - SWIFT_REF_NO VARCHAR2(20)
+    - INTERNAL_REF_NO VARCHAR2(25)
+    - ACTUAL_VOLUME NUMBER(10,0)  -- NOT NULL
+  Date key: ENTRY_DATETIME
+  Dimensions:
+  - SYMBOL_ID
+  - EXCHANGE_ID
+  - MARKET_ID
+  - SIDE
+  - FLAG_ID
+  - ORDER_TYPE
+  - STATE
+  - CLIENT_ID
+  - BROKER_ID
+  - USER_ID
+  - TRADER_ID
+  Measures:
+  - orders: COUNT(*)
+  - volume: SUM(VOLUME)
+  - notional_computed: SUM(VOLUME * PRICE)
+  - value_stored: SUM(VALUE)
+  - avg_price: AVG(PRICE)
+  - avg_yield: AVG(YIELD)
+  - accrued_profit: SUM(ACCRUED_PROFIT)
+  Notes:
+    • Use ENTRY_DATETIME for date filtering unless another timestamp is specified (STATE_TIME for state changes).
+    • For generic notional, prefer SUM(VOLUME * PRICE). SUM(VALUE) (value_stored) may include instrument multipliers (esp. bonds).
+    • SIDE is 'B'/'S'; IS_SHORT is a stringy boolean ('0'/'1').
+--- 
+
+
+## ATS.SYMBOL_MARKETS
+  Columns:
+    - TICK_SIZE NUMBER(8,4)  -- NOT NULL
+    - BOARD_LOT NUMBER(6,0)  -- NOT NULL
+    - UPPER_CIRCUIT_BREAKER_LIMIT NUMBER(14,4)  -- NOT NULL
+    - LOWER_CIRCUIT_BREAKER_LIMIT NUMBER(14,4)  -- NOT NULL
+    - UPPER_ORDER_VALUE_LIMIT NUMBER(15,4)  -- NOT NULL
+    - LOWER_ORDER_VALUE_LIMIT NUMBER(15,4)  -- NOT NULL
+    - UPPER_ORDER_VOLUME_LIMIT NUMBER(10,0)  -- NOT NULL
+    - LOWER_ORDER_VOLUME_LIMIT NUMBER(10,0)  -- NOT NULL
+    - MARKET_ID NUMBER(4,0)  -- PK, FK→ATS.MARKETS(MARKET_ID), NOT NULL
+    - SYMBOL_ID NUMBER(15,0)  -- PK, FK→ATS.SYMBOLS(SYMBOL_ID), NOT NULL
+    - FIFTY_TWO_WEEK_HIGH NUMBER(10,4)
+    - FIFTY_TWO_WEEK_LOW NUMBER(10,4)
+    - EXCHANGE_ID NUMBER(4,0)  -- PK, FK→ATS.EXCHANGES(EXCHANGE_ID), NOT NULL
+    - CLOSE_PRICE NUMBER(16,4)
+    - STATE NUMBER(1,0)  -- 0 = Open,1= Suspended, 2 = Deleted 
+    - EXCHANGE_MARKET_ID NUMBER(10,0)  -- FK→ATS.EXCHANGE_MARKETS(EXCHANGE_MARKET_ID), NOT NULL
+    - CREATION_DATE DATE  -- NOT NULL
+    - MODIFIED_BY VARCHAR2(32)  -- NOT NULL
+    - MODIFIED_DATE DATE  -- NOT NULL
+    - MARKET_CONFIG_OVERRIDE NUMBER(1,0)  -- NOT NULL
+    - UPPER_VOLUME_ALERT_LIMIT NUMBER(10,0)  -- NOT NULL
+    - LOWER_VOLUME_ALERT_LIMIT NUMBER(10,0)  -- NOT NULL
+    - UPPER_VALUE_ALERT_LIMIT NUMBER(15,4)  -- NOT NULL
+    - LOWER_VALUE_ALERT_LIMIT NUMBER(15,4)  -- NOT NULL
+    - MBO_DEPTH NUMBER(4,0)  -- NOT NULL
+    - MBP_DEPTH NUMBER(4,0)  -- NOT NULL
+    - ALLOW_SHORT_SELL NUMBER(1,0)  -- NOT NULL
+    - UPPER_CIRCUIT_PERCENT NUMBER(3,0)  -- NOT NULL
+    - LOWER_CIRCUIT_PERCENT NUMBER(3,0)  -- NOT NULL
+    - QUOTE_SPREAD NUMBER(14,4)
+    - REASON NVARCHAR2(160)
+    - FIXED_TICK_SIZE NUMBER(1,0)
+    - NEG_UPPER_CIRCUIT_BREAKER_LIMT NUMBER(14,4)
+    - NEG_LOWER_CIRCUIT_BREAKER_LIMT NUMBER(14,4)
+    - NEG_UPPER_CIRCUIT_PERCENT NUMBER(3,0)
+    - NEG_LOWER_CIRCUIT_PERCENT NUMBER(3,0)
+    - MIN_TRADE_VOLUME NUMBER(15,0)
+    - NO_OF_DAYS NUMBER(10,0)
+    - DYN_UPPER_CIRCUIT_PERCENT NUMBER(3,0)
+    - DYN_LOWER_CIRCUIT_PERCENT NUMBER(3,0)
+    - NEG_DYN_LOWER_CIRCUIT_PERCENT NUMBER(3,0)
+    - NEG_DYN_UPPER_CIRCUIT_PERCENT NUMBER(3,0)
+
+
+## ATS.FLAGS
+  Columns:
+    - FLAG_CODE NVARCHAR2(20)  -- NOT NULL
+    - DESC_ NVARCHAR2(20)  -- NOT NULL
+    - FLAG_ID NUMBER(2,0)  -- PK, NOT NULL
+
+
+## ATS.ORDER_TYPES
+  Columns:
+    - ID NUMBER(4,0)  -- PK, NOT
+...[TRUNCATED]...
+</SCHEMA_CARD>
+<RETRIEVED_GLOSSARY_KIT>
+### Trades — Overview
+(chapter: Trades; type: chapter_overview)
+ATS.TRADES holds executed transactions.
+Key fields:
+• TRADE_ID — unique trade key
+• SYMBOL_ID, QUANTITY, PRICE
+• BUY_CLIENT_ID / SELL_CLIENT_ID (or participants via brokers)
+• TRADE_DATE, SETTLEMENT_DATE
+• NOTIONAL (PRICE * QUANTITY) and possibly YIELD for bonds
+
+Cancel and state information may live in CANCELLED_TRADES and TRADE_STATES. Negotiated trades are linked via NEGOTIATED_TRADES.
+
+**Critical**: TRADES has NO SIDE column. There will be a time when we will have to distinguish between the types of symbols which were traded, For that We will have to go towards the SYMBOL_TYPES table. Where this information will reside and in exact these spellings, i.e SYMBOL_TYPE_ID and SYMBOL_TYPE : 1- EQUITIES,2- Bond,3- ETF . Use SELLER_BROKER_ID for sell-side, BUYER_BROKER_ID for buy-side. t.SIDE → ORA-00904. For sell-side volume/notional, filter on SELLER_BROKER_ID. For buy-side, use BUYER_BROKER_ID. Never join on both unless aggregating total activity.
+Date semantics: primary_date_cols=[TRADE_DATE, SETTLEMENT_DATE] grains=[day, month, year] Pick TRADE_DATE for trading flow questions, SETTLEMENT_DATE for settlement-focused questions.
+
+### Complete annual (or periodic) trading report for a single client – canonical pattern
+(chapter: Clients; type: recipe)
+When a user asks for a 'complete trading report' / 'full activity' / 'annual statement' for a specific client, always follow this exact pattern:
+1. Resolve client name → CLIENT_ID via EDS_CLIENTS (case-sensitive, use = not LIKE unless wildcard).
+2. Pull metrics from five sources using the same CLIENT_ID:
+   • ORDERS (client places → CLIENT_ID)
+   • TRADES (client can be BUYER_CLIENT_ID or SELLER_CLIENT_ID → use IN (..., ...))
+   • REJECTED_ORDERS (CLIENT_ID)
+   • SETTLEMENT_LEVY_DATA (CLIENT_ID + TRANSACTION_DATE)
+   • REPO_CONTRACTS (BUYER_CLIENT_ID or SELLER_CLIENT_ID)
+3. Use strict calendar year: >= DATE 'YYYY-01-01' AND < DATE '(YYYY+1)-01-01'
+4. Never join TRADES only on BUYER_CLIENT_ID (Qwen mistake) – misses all sell-side activity → zero rows.
+5. Output as category / metric / value rows (UNION ALL) for readability.
+This pattern works for any year – just change the dates. Also usable for monthly/quarterly reports by adjusting the date filter.
+Canonical joins (verbatim):
+- ATS.TRADES.BUYER_CLIENT_ID = EDS_CLIENTS.CLIENT_ID OR ATS.TRADES.SELLER_CLIENT_ID = EDS_CLIENTS.CLIENT_ID
+- ATS.REPO_CONTRACTS.BUYER_CLIENT_ID = EDS_CLIENTS.CLIENT_ID OR ATS.REPO_CONTRACTS.SELLER_CLIENT_ID = EDS_CLIENTS.CLIENT_ID
+Date semantics: primary_date_cols=[ENTRY_DATETIME, TRANSACTION_DATE] grains=[year, quarter, month] Always use fixed calendar boundaries for client reporting (never rolling windows).
+
+### Client Buy vs Sell notional and Buy/Sell ratio (TRADES)
+(chapter: Trades; type: recipe)
+When the user asks for client Buy/Sell notional or Buy to Sell ratio, prefer executed trades over orders.
+
+• Source table — ATS.TRADES is the canonical fact table for executed notional (PRICE * VOLUME) keyed by BUYER_CLIENT_ID and SELLER_CLIENT_ID.
+• Roles — A client can appear as buyer or seller. To aggregate cleanly per client, build a role-normalised CTE using UNION ALL:
+  – First SELECT: BUYER_CLIENT_ID AS client_id, PRICE*VOLUME AS buy_notional, 0 AS sell_notional.
+  – Second SELECT: SELLER_CLIENT_ID AS client_id, 0 AS buy_notional, PRICE*VOLUME AS sell_notional.
+• Join pattern — Join the role-normalised CTE back to ATS.EDS_CLIENTS on client_id = CLIENT_ID. Avoid joining TRADES directly to EDS_CLIENTS on (BUYER_CLIENT_ID = CLIENT_ID OR SELLER_CLIENT_ID = CLIENT_ID); the OR condition is slow and can lead to confusing aggregations.
+• Date filter — Use TRUNC(ENTRY_DATETIME,'YYYY') or a BETWEEN-style range on ENTRY_DATETIME to limit to the current year, e.g. ENTRY_DATETIME >= TRUNC(SYSDATE,'YYYY') AND ENTRY_DATETIME < ADD_MONTHS(TRUNC(SYSDATE,'YYYY'),1).
+• Metrics —
+  – buy_notional = SUM(buy_notional)
+  – sell_notional = SUM(sell_notional)
+  – buy_to_sell_ratio = buy_notional / sell_notional, with a guard for sell_notional = 0 (NULL or filter via HAVING).
+• Interpretation — High Buy/Sell ratio indicates a client is net buyer in notional terms over the period; low (<1) indicates they are net seller.
+
+Use this pattern whenever questions mention client Buy/Sell notional, Buy/Sell ratio, or similar executed activity ratios over time.
+Canonical joins (verbatim):
+- ATS.TRADES.BUYER_CLIENT_ID = ATS.EDS_CLIENTS.CLIENT_ID
+- ATS.TRADES.SELLER_CLIENT_ID = ATS.EDS_CLIENTS.CLIENT_ID
+Date semantics: primary_date_cols=[TRADES.ENTRY_DATETIME] grains=[year] Filter ENTRY_DATETIME to the relevant calendar period (e.g. current year) using range predicates rather than extracting the year from the column.
+
+### Circular trading / wash-trade detection (round-trip patterns)
+(chapter: Trades; type: recipe)
+Circular trading (also called wash-trading or round-tripping) occurs when two parties repeatedly trade the same instrument back and forth.
+
+Detection pattern (used in fs-072 and surveillance queries):
+• Take all trades in a window
+• For each (BuyerBroker, SellerBroker, Symbol), check if the reverse direction (SellerBroker → BuyerBroker on same Symbol) also exists
+• If both directions exist → flag the pair
+• Aggregate per broker (or client) to rank by number of circular relationships
+
+Key implementation points:
+• Use EXISTS subquery (or self-join) on reversed roles + same SYMBOL_ID
+• Exclude self-trades (BUYER_BROKER_ID != SELLER_BROKER_ID)
+• Count unique (counterparty, symbol) pairs to avoid double-counting volume
+• Typical windows: last 7d, 30d, 90d, or current month
+
+Business use:
+• Market integrity monitoring
+• Detecting artificial volume / liquidity inflation
+• Revenue-sharing or bonus-gaming schemes between brokers
+
+Never confuse with legitimate two-way flow – circular trading is flagged only when the reverse leg actually occurs.
+Date semantics: primary_date_cols=[ENTRY_DATETIME] grains=[day, month] Use half-open rolling windows (e.g., last 30 days) or fixed calendar periods. ENTRY_DATETIME is the execution timestamp.
+
+### Trades — canonical joins
+(chapter: Trades; type: recipe)
+Common joins:
+• TRADES.SYMBOL_ID → SYMBOLS.SYMBOL_ID
+• TRADES.CLIENT_ID / BUY_CLIENT_ID / SELL_CLIENT_ID → EDS_CLIENTS.CLIENT_ID
+• TRADES.BROKER_ID / BUY_BROKER_ID / SELL_BROKER_ID → SUBSCRIBED_BROKERS.BROKER_ID
+• TRADES.SETTLEMENT_TYPE_ID → SETTLEMENT_TYPES.SETTLEMENT_TYPE_ID
+
+For bond metrics, join SYMBOL_TYPES to filter instrument universes.
+Date semantics: primary_date_cols=[TRADE_DATE] grains=[day, month, year] Joins do not alter trade date semantics.
+
+### Trades — participants and attribution
+(chapter: Trades; type: section_note)
+Typical joins for participant attribution:
+• BUY_CLIENT_ID / SELL_CLIENT_ID → EDS_CLIENTS.CLIENT_ID
+• BUY_BROKER_ID / SELL_BROKER_ID → SUBSCRIBED_BROKERS.BROKER_ID
+
+For questions like “top clients by volume”, aggregate over both buyer and seller roles unless explicitly constrained.
+
+**Side-specific logic**:
+• Sell-side activity → use SELLER_BROKER_ID / SELL_CLIENT_ID
+• Buy-side activity → use BUYER_BROKER_ID / BUY_CLIENT_ID
+• Total activity (e.g. top broker) → UNION ALL or GROUP BY both sides
+
+**Never use t.SIDE on TRADES**. For notional: SUM(PRICE * QUANTITY).
+Date semantics: primary_date_cols=[TRADE_DATE] grains=[day, month, year] Attribution does not change date semantics; TRADE_DATE remains the primary key unless settlement-focused.
+</RETRIEVED_GLOSSARY_KIT>
+<RETRIEVED_FEWSHOTS>
+### Complete annual trading report for a specific client (all activity types – 2024 example)
+Question: Give me a complete trading report of the client BAI CARTEIRA PROPRIA for the year 2024. Complete information
+SQL:
+-- Complete annual trading report for a single client (2024) – orders, trades, rejected orders, levies, repos
+WITH client_id_lookup AS (SELECT CLIENT_ID FROM ATS.EDS_CLIENTS WHERE NAME = 'BAI CARTEIRA PROPRIA'),
+orders_data AS (SELECT COUNT(o.ORDER_NO) AS total_orders, SUM(o.VOLUME) AS total_order_volume, SUM(o.VOLUME * o.PRICE) AS total_order_notional, AVG(o.PRICE) AS avg_order_price, COUNT(CASE WHEN o.SIDE = 'B' THEN 1 END) AS buy_orders_count, COUNT(CASE WHEN o.SIDE = 'S' THEN 1 END) AS sell_orders_count FROM ATS.ORDERS o JOIN client_id_lookup cil ON cil.CLIENT_ID = o.CLIENT_ID WHERE o.ENTRY_DATETIME >= DATE '2024-01-01' AND o.ENTRY_DATETIME < DATE '2025-01-01'),
+trades_data AS (SELECT COUNT(t.TICKET_NO) AS total_trades, SUM(t.VOLUME) AS total_trade_volume, SUM(t.PRICE * t.VOLUME) AS total_trade_notional, SUM(t.SETTLEMENT_AMOUNT) AS total_settlement_amount, COUNT(CASE WHEN t.BUYER_CLIENT_ID = cil.CLIENT_ID THEN 1 END) AS buyer_trades_count, COUNT(CASE WHEN t.SELLER_CLIENT_ID = cil.CLIENT_ID THEN 1 END) AS seller_trades_count FROM ATS.TRADES t JOIN client_id_lookup cil ON cil.CLIENT_ID IN (t.BUYER_CLIENT_ID, t.SELLER_CLIENT_ID) WHERE t.ENTRY_DATETIME >= DATE '2024-01-01' AND t.ENTRY_DATETIME < DATE '2025-01-01'),
+rejected_orders_data AS (SELECT COUNT(ro.ORDER_NO) AS total_rejected_orders, SUM(ro.VOLUME) AS total_rejected_volume, SUM(ro.VOLUME * ro.PRICE) AS total_rejected_notional FROM ATS.REJECTED_ORDERS ro JOIN client_id_lookup cil ON cil.CLIENT_ID = ro.CLIENT_ID WHERE ro.ENTRY_DATETIME >= DATE '2024-01-01' AND ro.ENTRY_DATETIME < DATE '2025-01-01'),
+levies_data AS (SELECT SUM(sld.LEVY_AMOUNT) AS total_levy_amount, COUNT(*) AS total_levy_records FROM ATS.SETTLEMENT_LEVY_DATA sld JOIN client_id_lookup cil ON cil.CLIENT_ID = sld.CLIENT_ID WHERE sld.TRANSACTION_DATE >= DATE '2024-01-01' AND sld.TRANSACTION_DATE < DATE '2025-01-01'),
+repos_data AS (SELECT COUNT(rc.CONTRACT_NO) AS total_repo_legs, SUM(rc.PRICE * rc.VOLUME) AS total_repo_notional, SUM(rc.SETTLEMENT_AMOUNT) AS total_repo_cash_flow, COUNT(CASE WHEN rc.BUYER_CLIENT_ID = cil.CLIENT_ID THEN 1 END) AS buyer_repo_legs_count, COUNT(CASE WHEN rc.SELLER_CLIENT_ID = cil.CLIENT_ID THEN 1 END) AS seller_repo_legs_count FROM ATS.REPO_CONTRACTS rc JOIN client_id_lookup cil ON cil.CLIENT_ID IN (rc.BUYER_CLIENT_ID, rc.SELLER_CLIENT_ID) WHERE rc.ENTRY_DATETIME >= DATE '2024-01-01' AND rc.ENTRY_DATETIME < DATE '2025-01-01')
+SELECT 'Orders' AS category, 'Total Orders' AS metric, TO_CHAR(total_orders) AS value FROM orders_data UNION ALL SELECT 'Orders','Total Order Volume',TO_CHAR(total_order_volume) FROM orders_data UNION ALL SELECT 'Orders','Total Order Notional',TO_CHAR(total_order_notional) FROM orders_data UNION ALL SELECT 'Orders','Avg Order Price',TO_CHAR(avg_order_price,'FM999G999G999D00') FROM orders_data UNION ALL SELECT 'Orders','Buy Orders',TO_CHAR(buy_orders_count) FROM orders_data UNION ALL SELECT 'Orders','Sell Orders',TO_CHAR(sell_orders_count) FROM orders_data UNION ALL SELECT 'Trades','Total Trades',TO_CHAR(total_trades) FROM trades_data UNION ALL SELECT 'Trades','Total Trade Volume',TO_CHAR(total_trade_volume) FROM trades_data UNION ALL SELECT 'Trades','Total Trade Notional',TO_CHAR(total_trade_notional) FROM trades_data UNION ALL SELECT 'Trades','Settlement Amount',TO_CHAR(total_settlement_amount) FROM trades_data UNION ALL SELECT 'Trades','Trades as Buyer',TO_CHAR(buyer_trades_count) FROM trades_data UNION ALL SELECT 'Trades','Trades as Seller',TO_CHAR(seller_trades_count) FROM trades_data UNION ALL SELECT 'Rejected Orders','Total Rejected',TO_CHAR(total_rejected_orders) FROM rejected_orders_data UNION ALL SELECT 'Rejected Orders','Rejected Volume',TO_CHAR(total_rejected_volume) FROM rejected_orders_data UNION ALL SELECT 'Rejected Orders','Rejected Notional',TO_CHAR(total_rejected_notional) FROM rejected_orders_data UNION ALL SELECT 'Levies','Total Levy Amount',TO_CHAR(total_levy_amount) FROM levies_data UNION ALL SELECT 'Levies','Levy Records',TO_CHAR(total_levy_records) FROM levies_data UNION ALL SELECT 'Repo','Total Repo Legs',TO_CHAR(total_repo_legs) FROM repos_data UNION ALL SELECT 'Repo','Repo Notional',TO_CHAR(total_repo_notional) FROM repos_data UNION ALL SELECT 'Repo','Repo Cash Flow',TO_CHAR(total_repo_cash_flow) FROM repos_data UNION ALL SELECT 'Repo','Repo as Buyer',TO_CHAR(buyer_repo_legs_count) FROM repos_data UNION ALL SELECT 'Repo','Repo as Seller',TO_CHAR(seller_repo_legs_count) FROM repos_data ORDER BY category, metric FETCH FIRST 200 ROWS ONLY;
+
+### Complete repo transaction cycle (leg 1 to leg 2) with all details for January 2025
+Question: Give me a complete cycle of a repo market transaction from its leg 1 to leg 2 with all the information for January
+SQL:
+-- Complete cycle of repo market transactions (leg 1 to leg 2) with all information for January 2025
+SELECT
+    rc.CONTRACT_NO,
+    rc.LEG,
+    rc.REPO_TYPE,
+    rc.ENTRY_DATETIME,
+    rc.INITIAL_DATE,
+    rc.TERMINATION_DATE,
+    s.SYMBOL AS symbol,
+    e.EXCHANGE_NAME AS exchange,
+    rc.MARKET_ID,
+    rc.PRICE,
+    rc.VOLUME,
+    rc.VALUE,
+    rc.SETTLEMENT_AMOUNT,
+    rc.REPURCHASE_PRICE,
+    rc.REPURCHASE_SETTLEMENT_AMOUNT,
+    rc.REPO_RATE,
+    rc.REPO_HAIRCUT,
+    rc.YIELD,
+    rc.ACCRUED_PROFIT,
+    rc.REPURCHASE_ACCRUED_PROFIT,
+    bb.BROKER_NAME AS buyer_broker_name,
+    cb.NAME AS buyer_client_name,
+    ub.COMPLETE_NAME AS buyer_user_name,
+    sb.BROKER_NAME AS seller_broker_name,
+    cs.NAME AS seller_client_name,
+    us.COMPLETE_NAME AS seller_user_name,
+    st.SETTLEMENT_TYPE AS settlement_type_name,
+    rc.TRADE_STATE,
+    rc.IS_PROCESSED,
+    rc.DIRTY_PRICE,
+    rc.REPURCHASE_DIRTY_PRICE,
+    rc.PAR_VALUE,
+    rc.MARKET_VALUE,
+    rc.ACCRUED_DAYS
+FROM ATS.REPO_CONTRACTS rc
+JOIN ATS.SYMBOLS s ON s.SYMBOL_ID = rc.SYMBOL_ID
+JOIN ATS.EXCHANGES e ON e.EXCHANGE_ID = rc.EXCHANGE_ID
+LEFT JOIN ATS.SUBSCRIBED_BROKERS bb ON bb.BROKER_ID = rc.BUYER_BROKER_ID
+LEFT JOIN ATS.SUBSCRIBED_BROKERS sb ON sb.BROKER_ID = rc.SELLER_BROKER_ID
+LEFT JOIN ATS.EDS_CLIENTS cb ON cb.CLIENT_ID = rc.BUYER_CLIENT_ID
+LEFT JOIN ATS.EDS_CLIENTS cs ON cs.CLIENT_ID = rc.SELLER_CLIENT_ID
+LEFT JOIN ATS.USERS ub ON ub.USER_ID = rc.BUYER_USER_ID
+LEFT JOIN ATS.USERS us ON us.USER_ID = rc.SELLER_USER_ID
+LEFT JOIN ATS.SETTLEMENT_TYPES st ON st.SETTLEMENT_TYPE_ID = rc.SETTLEMENT_TYPE_ID
+WHERE rc.ENTRY_DATETIME >= DATE '2025-01-01'  -- January 2025 (current year)
+  AND rc.ENTRY_DATETIME < DATE '2025-02-01'
+  AND rc.LEG IN (1, 2)  -- Explicit for cycle legs
+ORDER BY rc.CONTRACT_NO, rc.LEG
+FETCH FIRST 200 ROWS ONLY
+
+### Complete annual report for a single symbol (all domains – 2024 example)
+Question: Give me a complete report for the symbol BCGAAAAA for the year 2024
+SQL:
+-- Complete symbol report – canonical pattern (2024 example)
+WITH year_bounds AS (SELECT DATE '2024-01-01' AS y_start, DATE '2025-01-01' AS y_end FROM dual),
+target_symbol AS (SELECT SYMBOL_ID, SYMBOL FROM ATS.SYMBOLS WHERE SYMBOL = 'BCGAAAAA'),
+daily AS (SELECT SUM(si.TURNOVER_VALUE) AS turnover, SUM(si.TRADES_COUNT) AS trades_cnt, AVG(si.CLOSE_PRICE) AS close_price, MAX(si.HIGH_PRICE) AS high, MIN(si.LOW_PRICE) AS low FROM ATS.SYMBOL_DAILY_INDICATORS si JOIN target_symbol ts ON si.SYMBOL_ID = ts.SYMBOL_ID CROSS JOIN year_bounds yb WHERE si.STATS_DATE >= yb.y_start AND si.STATS_DATE < yb.y_end GROUP BY si.SYMBOL_ID),
+intraday AS (SELECT SUM(s.VOLUME) AS volume, SUM(s.VALUE) AS turnover FROM ATS.SYMBOL_INDICATORS s JOIN target_symbol ts ON s.SYMBOL_ID = ts.SYMBOL_ID CROSS JOIN year_bounds yb WHERE s.ENTRY_DATETIME >= yb.y_start AND s.ENTRY_DATETIME < yb.y_end GROUP BY s.SYMBOL_ID),
+orders AS (SELECT COUNT(*) AS cnt, SUM(o.VOLUME) AS vol, SUM(o.VOLUME*o.PRICE) AS notional, SUM(CASE WHEN o.SIDE='B' THEN o.VOLUME ELSE 0 END) AS buy_vol, SUM(CASE WHEN o.SIDE='S' THEN o.VOLUME ELSE 0 END) AS sell_vol, AVG(o.PRICE) AS avg_price FROM ATS.ORDERS o JOIN target_symbol ts ON o.SYMBOL_ID = ts.SYMBOL_ID CROSS JOIN year_bounds yb WHERE o.ENTRY_DATETIME >= yb.y_start AND o.ENTRY_DATETIME < yb.y_end GROUP BY o.SYMBOL_ID),
+trades AS (SELECT COUNT(*) AS cnt, SUM(t.VOLUME) AS vol, SUM(t.PRICE*t.VOLUME) AS notional, AVG(t.PRICE) AS avg_price FROM ATS.TRADES t JOIN target_symbol ts ON t.SYMBOL_ID = ts.SYMBOL_ID CROSS JOIN year_bounds yb WHERE t.ENTRY_DATETIME >= yb.y_start AND t.ENTRY_DATETIME < yb.y_end GROUP BY t.SYMBOL_ID),
+rejected AS (SELECT COUNT(*) AS cnt FROM ATS.REJECTED_ORDERS ro JOIN target_symbol ts ON ro.SYMBOL_ID = ts.SYMBOL_ID CROSS JOIN year_bounds yb WHERE ro.ENTRY_DATETIME >= yb.y_start AND ro.ENTRY_DATETIME < yb.y_end GROUP BY ro.SYMBOL_ID),
+repo AS (SELECT COUNT(*) AS legs, SUM(rc.SETTLEMENT_AMOUNT) AS cash_flow, AVG(rc.REPO_RATE) AS rate, AVG(rc.REPO_HAIRCUT) AS haircut FROM ATS.REPO_CONTRACTS rc JOIN target_symbol ts ON rc.SYMBOL_ID = ts.SYMBOL_ID CROSS JOIN year_bounds yb WHERE rc.ENTRY_DATETIME >= yb.y_start AND rc.ENTRY_DATETIME < yb.y_end GROUP BY rc.SYMBOL_ID)
+SELECT ts.SYMBOL,
+  NVL(d.turnover,0) AS daily_turnover, NVL(d.trades_cnt,0) AS daily_trades_count, NVL(d.close_price,0) AS avg_daily_close,
+  NVL(i.volume,0) AS intraday_volume, NVL(i.turnover,0) AS intraday_turnover,
+  NVL(o.cnt,0) AS orders_count, NVL(o.vol,0) AS order_volume, NVL(o.notional,0) AS order_notional, NVL(o.buy_vol,0) AS buy_volume, NVL(o.sell_vol,0) AS sell_volume,
+  NVL(t.cnt,0) AS trades_count, NVL(t.vol,0) AS trade_volume, NVL(t.notional,0) AS trade_notional,
+  NVL(r.cnt,0) AS rejected_orders_count,
+  NVL(p.legs,0) AS repo_legs, NVL(p.cash_flow,0) AS repo_cash_flow, NVL(p.rate,0) AS avg_repo_rate
+FROM target_symbol ts
+LEFT JOIN daily d ON d.SYMBOL_ID = ts.SYMBOL_ID
+LEFT JOIN intraday i ON i.SYMBOL_ID = ts.SYMBOL_ID
+LEFT JOIN orders o ON o.SYMBOL_ID = ts.SYMBOL_ID
+LEFT JOIN trades t ON t.SYMBOL_ID = ts.SYMBOL_ID
+LEFT JOIN rejected r ON r.SYMBOL_ID = ts.SYMBOL_ID
+LEFT JOIN repo p ON p.SYMBOL_ID = ts.SYMBOL_ID
+FETCH FIRST 200 ROWS ONLY;
+
+### Clients with >100 trades in 2024 and their most traded symbol
+Question: Which clients executed more than 100 trades (buyer + seller) in 2024? For each, show total trades and their most traded symbol.
+SQL:
+--WITH client_all_trades_2024 AS (
+-- -- Combine buyer and seller trades for full client trade activity
+-- SELECT
+-- t.BUYER_CLIENT_ID AS client_id,
+-- t.SYMBOL_ID
+-- FROM ATS.TRADES t
+-- WHERE EXTRACT(YEAR FROM t.ENTRY_DATETIME) = 2024
+-- UNION ALL
+-- SELECT
+-- t.SELLER_CLIENT_ID AS client_id,
+-- t.SYMBOL_ID
+-- FROM ATS.TRADES t
+-- WHERE EXTRACT(YEAR FROM t.ENTRY_DATETIME) = 2024
+--),
+--client_symbol_trades AS (
+-- -- Count trades for each client-symbol pair in 2024
+-- SELECT
+-- client_id,
+-- SYMBOL_ID,
+-- COUNT(*) AS symbol_trade_count
+-- FROM client_all_trades_2024
+-- GROUP BY client_id, SYMBOL_ID
+--),
+--client_total_trades AS (
+-- -- Calculate total trades per client and filter for those with > 100 trades
+-- SELECT
+-- client_id,
+-- SUM(symbol_trade_count) AS total_trades
+-- FROM client_symbol_trades
+-- GROUP BY client_id
+-- HAVING SUM(symbol_trade_count) > 100
+--),
+--ranked_client_symbol_trades AS (
+-- -- Rank symbols by trade count for each qualifying client
+-- SELECT
+-- cst.client_id,
+-- cst.SYMBOL_ID,
+-- cst.symbol_trade_count,
+-- ROW_NUMBER() OVER (PARTITION BY cst.client_id ORDER BY cst.symbol_trade_count DESC) AS rn
+-- FROM client_symbol_trades cst
+-- JOIN client_total_trades ctt ON ctt.client_id = cst.client_id -- Filter for qualifying clients
+--)
+--SELECT
+-- cl.NAME AS client_name,
+-- s.SYMBOL AS most_traded_symbol,
+-- r.symbol_trade_count AS most_traded_symbol_count,
+-- ctt.total_trades
+--FROM ranked_client_symbol_trades r
+--JOIN client_total_trades ctt ON ctt.client_id = r.client_id
+--JOIN ATS.EDS_CLIENTS cl ON cl.CLIENT_ID = r.client_id
+--JOIN ATS.SYMBOLS s ON s.SYMBOL_ID = r.SYMBOL_ID
+--WHERE r.rn = 1 -- Select only the top-ranked symbol for each client
+--ORDER BY ctt.total_trades DESC
+--FETCH FIRST 200 ROWS ONLY
+
+### Clients with >5 orders last month but fewer executions
+Question: List clients who placed more than 5 orders in last month but had lesser executions with their count
+SQL:
+WITH date_range AS (
+  SELECT ADD_MONTHS(TRUNC(SYSDATE, 'MM'), -1) AS start_date,
+         TRUNC(SYSDATE, 'MM') AS end_date
+  FROM dual
+),
+client_orders AS (
+  SELECT o.CLIENT_ID, COUNT(*) AS total_orders
+  FROM ATS.ORDERS o
+  CROSS JOIN date_range dr
+  WHERE o.ENTRY_DATETIME >= dr.start_date
+    AND o.ENTRY_DATETIME < dr.end_date
+  GROUP BY o.CLIENT_ID
+  HAVING COUNT(*) > 5
+),
+client_executions AS (
+  -- count executions for both roles in TRADES
+  SELECT client_id, COUNT(*) AS total_executions
+  FROM (
+    SELECT t.BUYER_CLIENT_ID AS client_id
+    FROM ATS.TRADES t
+    CROSS JOIN date_range dr
+    WHERE t.ENTRY_DATETIME >= dr.start_date
+      AND t.ENTRY_DATETIME < dr.end_date
+    UNION ALL
+    SELECT t.SELLER_CLIENT_ID AS client_id
+    FROM ATS.TRADES t
+    CROSS JOIN date_range dr
+    WHERE t.ENTRY_DATETIME >= dr.start_date
+      AND t.ENTRY_DATETIME < dr.end_date
+  ) x
+  GROUP BY client_id
+)
+SELECT
+  ec.NAME AS client_name,
+  co.total_orders,
+  NVL(ce.total_executions, 0) AS total_executions
+FROM client_orders co
+LEFT JOIN client_executions ce ON ce.client_id = co.CLIENT_ID
+JOIN ATS.EDS_CLIENTS ec ON ec.CLIENT_ID = co.CLIENT_ID
+WHERE NVL(ce.total_executions, 0) < co.total_orders
+ORDER BY co.total_orders DESC
+FETCH FIRST 200 ROWS ONLY;
+</RETRIEVED_FEWSHOTS>
+
+Return ONLY the JSON envelope object described in the system prompt.

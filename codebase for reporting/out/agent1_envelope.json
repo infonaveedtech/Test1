@@ -1,0 +1,54 @@
+{
+  "tables": [
+    "ATS.TRADES",
+    "ATS.EDS_CLIENTS",
+    "ATS.SYMBOLS"
+  ],
+  "date_key": "ENTRY_DATETIME",
+  "time_window": {
+    "type": "none"
+  },
+  "grain": "none",
+  "group_by": [
+    "CLIENT_ID",
+    "NAME",
+    "SYMBOL"
+  ],
+  "metrics": [
+    {
+      "name": "trade_count",
+      "definition": "COUNT(*)"
+    }
+  ],
+  "required_joins_verbatim": [
+    "TRADES.BUYER_CLIENT_ID = EDS_CLIENTS.CLIENT_ID",
+    "TRADES.SELLER_CLIENT_ID = EDS_CLIENTS.CLIENT_ID",
+    "TRADES.SYMBOL_ID = SYMBOLS.SYMBOL_ID"
+  ],
+  "filters": [
+    "ENTRY_DATETIME >= (SELECT MAX(ENTRY_DATETIME) - 50 * INTERVAL '1' DAY FROM ATS.TRADES)"
+  ],
+  "order_by": [
+    "trade_count DESC"
+  ],
+  "row_limit": 200,
+  "retrieval_citations": {
+    "fewshots": [
+      "fs-072",
+      "fs-073",
+      "fs-074"
+    ],
+    "glossary": [
+      "gk-001",
+      "gk-002",
+      "gk-003"
+    ]
+  },
+  "assumptions": [
+    "The query implies a client who has executed trades in the last 50 trades, and we are to identify the client who started accumulating a single symbol in those trades.",
+    "The term 'accumulation' is interpreted as a client who has executed multiple trades of the same symbol in the last 50 trades.",
+    "The query does not specify a date range, so no date filtering is applied beyond the last 50 trades.",
+    "The client's name is to be returned along with the symbol and trade count, as per the 'complete info' request."
+  ],
+  "__ok__": true
+}

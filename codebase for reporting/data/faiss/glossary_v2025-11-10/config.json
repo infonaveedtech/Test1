@@ -1,0 +1,17 @@
+{
+  "collection_name": "glossary",
+  "version": "2025-11-10",
+  "embedding_model": "BAAI/bge-small-en-v1.5",
+  "dimension": 384,
+  "normalize_embeddings": true,
+  "similarity": "cosine",
+  "faiss_index_type": "IndexHNSWFlat",
+  "faiss_params": {
+    "M": 64,
+    "efConstruction": 200
+  },
+  "build_stats": {
+    "doc_count": 53,
+    "built_at": "2025-12-16 12:39:35"
+  }
+}

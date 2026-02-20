@@ -1,0 +1,133 @@
+{
+  "info": {
+    "name": "NL-SQL Backend API",
+    "_postman_id": "11111111-2222-3333-4444-555555555555",
+    "description": "Updated Postman collection for NL→SQL FastAPI backend including pipeline, DB execute, and the new reporting features (layout, grouping, detail columns).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Agent-0 Intent",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"Wsup, how are u?\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/intent",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "intent"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "SQL Execute (manual)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sql\": \"SELECT 1 AS test_col FROM DUAL\",\n  \"row_limit\": 10\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/sql/execute",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "sql", "execute"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Full Pipeline Run (no DB)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"Top 5 brokers by notional in the last 30 days\",\n  \"options\": {\n    \"run_db\": false,\n    \"row_limit\": 200,\n    \"save_artifacts\": false,\n    \"run_agent3\": false\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/pipeline/run",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "pipeline", "run"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Full Pipeline Run (with DB)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"Top 5 brokers by notional in the last 30 days\",\n  \"options\": {\n    \"run_db\": true,\n    \"row_limit\": 200,\n    \"save_artifacts\": false,\n    \"run_agent3\": false\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/pipeline/run",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "pipeline", "run"]
+        }
+      },
+      "response": []
+    },
+
+    {
+      "name": "Report (Simple / Flat Layout)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Test Report\",\n  \"question\": \"Show a simple test row\",\n  \"sql\": \"SELECT 1 AS test_col FROM DUAL\",\n  \"columns\": [\"TEST_COL\"],\n  \"rows\": [[1]],\n  \"model\": \"manual-test\",\n  \"gen_ms\": 123,\n  \"exec_ms\": 45,\n  \"rows_est\": \"1\",\n  \"generated_by\": \"ATS SQLBot\",\n  \"include\": {\n    \"html\": true,\n    \"csv\": true,\n    \"pdf\": false,\n    \"docx\": false\n  },\n  \"layout\": {\n    \"layout_type\": \"flat\",\n    \"group_by\": [],\n    \"detail_columns\": []\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/report",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "report"]
+        }
+      },
+      "response": []
+    },
+
+    {
+      "name": "Report (Grouped by Broker)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Broker Summary Report\",\n  \"question\": \"Broker wise notional for last 30 days\",\n  \"sql\": \"SELECT BROKER_NAME, EMAIL, MOBILE, TOTAL_NOTIONAL FROM brokers_notional\",\n  \"columns\": [\"BROKER_NAME\", \"EMAIL\", \"MOBILE\", \"TOTAL_NOTIONAL\"],\n  \"rows\": [\n    [\"VTB AFRICA S.A\", \"ops@vtb.com\", \"12345\", 80898100],\n    [\"BRK SECURITIES\", \"hello@brk.com\", \"98765\", 11220000]\n  ],\n  \"model\": \"manual-test\",\n  \"gen_ms\": 200,\n  \"exec_ms\": 100,\n  \"rows_est\": \"2\",\n  \"generated_by\": \"ATS SQLBot\",\n  \"include\": {\n    \"html\": true,\n    \"csv\": true,\n    \"pdf\": true,\n    \"docx\": false\n  },\n  \"layout\": {\n    \"layout_type\": \"grouped\",\n    \"group_by\": [\"BROKER_NAME\"],\n    \"detail_columns\": [\"BROKER_NAME\", \"EMAIL\", \"MOBILE\", \"TOTAL_NOTIONAL\"]\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/report",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "report"]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    }
+  ]
+}

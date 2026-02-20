@@ -1,0 +1,80 @@
+##############################################
+# Dockerfile.api - Backend (FastAPI) image  #
+# This container runs: uvicorn api:app      #
+##############################################
+
+# 1) Base image: small Python 3.11 with Debian "slim"
+# syntax=docker/dockerfile:1.6
+FROM python:3.11-slim-bookworm
+
+# 2) Recommended Python env settings
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/home/appuser/.local/bin:${PATH}"
+
+
+# 3) Install system packages we need
+#    - build-essential : for any packages that compile native extensions
+#    - wkhtmltopdf     : for PDF generation in reports
+#    - libgl1, libgomp1: common deps for sentence-transformers / FAISS
+#    - libcairo2, libcairo2-dev, pkg-config:
+#        REQUIRED by pycairo / rlpycairo (used via xhtml2pdf -> svglib)
+#    - libffi-dev      : common dependency for crypto-related libs
+#    - curl            : handy for debugging/health checks
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        wkhtmltopdf \
+        libgl1 \
+        libgomp1 \
+        libcairo2 \
+        libcairo2-dev \
+        pkg-config \
+        libffi-dev \
+        curl && \
+    rm -rf /var/lib/apt/lists/*
+
+
+# 4) Create a non-root user and set working directory
+#    This is better security practice than running as root.
+RUN useradd -m -u 1000 appuser && \
+    mkdir -p /app && chown -R appuser:appuser /app
+
+WORKDIR /app
+USER appuser
+
+# 5) Copy requirements and install Python dependencies
+#    IMPORTANT: this assumes your backend & agents use requirements.txt
+COPY requirements.txt /app/requirements.txt
+
+# RUN pip install --no-cache-dir --upgrade pip && \
+#     pip install --no-cache-dir -r requirements.txt
+
+RUN --mount=type=cache,target=/home/appuser/.cache/pip \
+    pip install --upgrade pip && \
+    pip install -r requirements.txt
+
+# 6) Copy the rest of the project into the image
+#    This includes api.py, endpoints/, agents/, data/, prompts/, etc.
+COPY . /app
+
+# 7) (Optional but recommended) Pre-download embedding model
+#    This makes sure the SentenceTransformer model "BAAI/bge-small-en-v1.5"
+#    is already in the image, so no internet is needed at container runtime.
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-en-v1.5')"
+
+# 8) Environment variables INSIDE the container
+#    NOTE: you can override all of these at 'docker run' time.
+#    - WKHTMLTOPDF_PATH: where wkhtmltopdf is installed in this image
+#    - LLM_HOST        : default LLM server (we'll override this later)
+#    - LLM_MODEL       : default model name (can be overridden)
+ENV WKHTMLTOPDF_PATH=/usr/bin/wkhtmltopdf \
+    LLM_HOST=http://host.docker.internal:11434 \
+    LLM_MODEL=qwen3-coder:30b
+
+# 9) Expose the FastAPI port used by uvicorn
+EXPOSE 8000
+
+# 10) Start the FastAPI backend
+#     This assumes 'api.py' defines 'app = FastAPI()'
+CMD ["uvicorn", "api:app", "--host", "192.168.36.83", "--port", "8000"]

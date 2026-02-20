@@ -1,0 +1,585 @@
+openapi: 3.0.3
+info:
+  title: NL→SQL Multi-Agent Analytics API
+  version: 1.0.0
+  description: |
+    Backend API for the NL→SQL multi-agent pipeline.
+
+    This service exposes:
+    - Agent-0 intent detection
+    - Full NL→SQL pipeline (Agents 0–3 + optional DB execution)
+    - Direct Oracle SQL execution
+    - Report generation (HTML / CSV / PDF / DOCX)
+
+    Frontend (Streamlit) communicates with this API over HTTP only.
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+
+tags:
+  - name: health
+    description: Health checks
+  - name: intent
+    description: Agent-0 intent classification
+  - name: sql
+    description: Direct Oracle SQL execution
+  - name: pipeline
+    description: Full NL→SQL multi-agent pipeline
+  - name: report
+    description: Report generation (HTML / CSV / PDF / DOCX)
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Health check
+      description: Simple health endpoint to verify that the API instance is running.
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  message:
+                    type: string
+                    example: NL→SQL API is running
+
+  /v1/intent:
+    post:
+      tags: [intent]
+      summary: Run Agent-0 (intent & safety gate)
+      description: |
+        Runs Agent-0 to classify the user query, detect small talk / unsafe content,
+        and decide whether the full NL→SQL pipeline should run.
+
+        This endpoint does **not** run RAG or any other agents.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntentRequest'
+      responses:
+        "200":
+          description: Intent classification result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntentResponse'
+        "500":
+          description: Internal error while running Agent-0
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/sql/execute:
+    post:
+      tags: [sql]
+      summary: Execute Oracle SQL
+      description: |
+        Executes a SQL query on the Oracle database using the existing `run_sql` helper.
+
+        Intended primarily for SELECT-style queries; basic guards are in place against
+        obviously destructive operations (DROP / DELETE / UPDATE / INSERT / TRUNCATE).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SqlExecuteRequest'
+      responses:
+        "200":
+          description: SQL executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SqlExecuteResponse'
+        "400":
+          description: Potentially destructive SQL detected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          description: Oracle execution error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/pipeline/run:
+    post:
+      tags: [pipeline]
+      summary: Run full NL→SQL pipeline (Agents 0–3 + optional DB)
+      description: |
+        Runs the complete multi-agent pipeline:
+
+        1. Agent-0 (intent gate)
+        2. RAG retrieval
+        3. Agent-1 (planner)
+        4. Agent-2 (SQL composer)
+        5. Agent-3 (SQL verifier/refiner)
+        6. Optional Oracle execution (run_db option)
+
+        The response includes detailed intermediate artifacts for observability.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PipelineRequest'
+      responses:
+        "200":
+          description: Pipeline completed (or intent-gated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineResponse'
+        "500":
+          description: Error in one of the pipeline stages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/report:
+    post:
+      tags: [report]
+      summary: Generate report (HTML / CSV / PDF / DOCX)
+      description: |
+        Builds report artifacts from an already-executed query result set.
+
+        This endpoint **does not** run the NL→SQL pipeline or execute SQL;
+        it only formats the data provided.
+
+        Binary formats (CSV / PDF / DOCX) are returned as base64-encoded strings.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportRequest'
+      responses:
+        "200":
+          description: Report artifacts generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportResponse'
+        "500":
+          description: Error while building report artifacts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+
+    # ---------- Common ----------
+
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          description: Error detail message
+          oneOf:
+            - type: string
+            - type: object
+
+    # ---------- Intent ----------
+
+    IntentRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: User's raw natural language query.
+          example: Wsup, how are u?
+        host:
+          type: string
+          nullable: true
+          description: >
+            Optional override for the LLM host (e.g. 'http://localhost:11434').
+            If omitted or set to 'string', the backend default is used.
+        model:
+          type: string
+          nullable: true
+          description: >
+            Optional override for the Agent-0 model.
+            If omitted or set to 'string', the backend default is used.
+        debug:
+          type: boolean
+          description: If true, Agent-0 may log extra debug info to stdout.
+          default: false
+
+    IntentSafety:
+      type: object
+      properties:
+        is_potentially_unsafe:
+          type: boolean
+        notes:
+          type: string
+          nullable: true
+
+    IntentResponse:
+      type: object
+      description: >
+        Structure returned by Agent-0. Some fields may vary slightly based on the
+        internal implementation, but the core shape is as described.
+      properties:
+        should_run_pipeline:
+          type: boolean
+          description: Whether the NL→SQL pipeline should proceed.
+        intent:
+          type: string
+          description: Classified intent label (e.g. 'sql_query', 'non_db_smalltalk').
+        reason:
+          type: string
+          nullable: true
+          description: Explanation of the intent classification.
+        assistant_reply:
+          type: string
+          nullable: true
+          description: >
+            If the pipeline should not run, this may contain a user-facing reply
+            (e.g. for small talk).
+        rephrased_query:
+          type: string
+          nullable: true
+        safety:
+          $ref: '#/components/schemas/IntentSafety'
+        __raw__:
+          type: string
+          nullable: true
+          description: Raw LLM output used to build this object (for debugging).
+
+    # ---------- SQL Execution ----------
+
+    SqlExecuteRequest:
+      type: object
+      required:
+        - sql
+      properties:
+        sql:
+          type: string
+          description: Oracle SQL query to execute (SELECT-style only).
+          example: SELECT 1 AS test_col FROM DUAL
+        row_limit:
+          type: integer
+          minimum: 1
+          maximum: 5000
+          default: 200
+          description: Maximum number of rows to fetch.
+
+    SqlExecuteResponse:
+      type: object
+      properties:
+        columns:
+          type: array
+          items:
+            type: string
+          example: ["TEST_COL"]
+        rows:
+          type: array
+          items:
+            type: array
+            items:
+              # values can be of various DB types; represent as any
+              nullable: true
+          example:
+            - [1]
+        row_limit:
+          type: integer
+          example: 200
+        exec_ms:
+          type: integer
+          description: Execution time in milliseconds.
+          example: 12
+
+    # ---------- Pipeline ----------
+
+    PipelineOptions:
+      type: object
+      properties:
+        run_db:
+          type: boolean
+          description: If true, execute the final SQL on Oracle DB.
+          default: false
+        row_limit:
+          type: integer
+          minimum: 1
+          maximum: 5000
+          description: Row limit for DB execution (if run_db=true).
+          default: 200
+        save_artifacts:
+          type: boolean
+          description: >
+            If true, the backend writes RAG, envelope, and final SQL to ./out.
+          default: false
+        run_agent3:
+          type: boolean
+          description: >
+            Deprecated / ignored. Agent-3 is always attempted now.
+          default: false
+
+    PipelineRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: User's natural language question.
+          example: Top 5 brokers by notional in the last 30 days
+        host:
+          type: string
+          nullable: true
+          description: >
+            Optional override for LLM host (Ollama-compatible).
+            If omitted or 'string', backend default is used.
+        model_agent0:
+          type: string
+          nullable: true
+          description: Optional override model for Agent-0.
+        model_agent1:
+          type: string
+          nullable: true
+          description: Optional override model for Agent-1.
+        model_agent2:
+          type: string
+          nullable: true
+          description: Optional override model for Agent-2.
+        model_agent3:
+          type: string
+          nullable: true
+          description: Optional override model for Agent-3.
+        num_ctx:
+          type: integer
+          description: Context window for Agent-2 and Agent-3.
+          default: 22000
+        temperature:
+          type: number
+          format: float
+          description: Temperature for Agent-2 and Agent-3.
+          default: 0.1
+        options:
+          $ref: '#/components/schemas/PipelineOptions'
+
+    PipelineMeta:
+      type: object
+      properties:
+        ran_pipeline:
+          type: boolean
+        total_ms:
+          type: integer
+          nullable: true
+          description: Total time for the pipeline in milliseconds.
+        models:
+          type: object
+          additionalProperties:
+            type: string
+          description: Mapping of agent name → model name.
+          example:
+            agent0: qwen3-coder:30b
+            agent1: qwen3-coder:30b
+            agent2: qwen3-coder:30b
+            agent3: qwen3-coder:30b
+        errors:
+          type: array
+          items:
+            type: string
+          description: List of errors encountered (e.g. Agent-3 failures).
+
+    PipelineDBResult:
+      type: object
+      nullable: true
+      properties:
+        columns:
+          type: array
+          items:
+            type: string
+        rows:
+          type: array
+          items:
+            type: array
+            items:
+              nullable: true
+        row_limit:
+          type: integer
+        exec_ms:
+          type: integer
+
+    PipelineResponse:
+      type: object
+      description: >
+        Full pipeline output. Includes Agent-0 intent, RAG info, Agent-1 envelope,
+        Agent-2 SQL, Agent-3 final SQL, optional DB result, and meta information.
+      properties:
+        intent:
+          $ref: '#/components/schemas/IntentResponse'
+        rag:
+          type: object
+          nullable: true
+          description: RAG retrieval object. Shape depends on retrieve_context implementation.
+        agent1:
+          type: object
+          nullable: true
+          description: Planner outputs (envelope + messages).
+          properties:
+            envelope:
+              type: object
+              nullable: true
+              description: Structured JSON envelope describing tables, joins, filters, etc.
+            messages:
+              type: array
+              nullable: true
+              items:
+                type: object
+        agent2:
+          type: object
+          nullable: true
+          description: Composer outputs (SQL + raw LLM output + messages).
+          properties:
+            sql:
+              type: string
+              nullable: true
+            raw_llm_output:
+              type: string
+              nullable: true
+            messages:
+              type: array
+              nullable: true
+              items:
+                type: object
+        agent3:
+          type: object
+          nullable: true
+          description: Verifier/refiner outputs.
+          properties:
+            ran:
+              type: boolean
+              nullable: true
+            sql:
+              type: string
+              nullable: true
+              description: Final validated SQL (or Agent-2 SQL on fallback).
+            rationale:
+              type: string
+              nullable: true
+            reason:
+              type: string
+              nullable: true
+            schema_blocks:
+              type: object
+              nullable: true
+        db:
+          $ref: '#/components/schemas/PipelineDBResult'
+        meta:
+          $ref: '#/components/schemas/PipelineMeta'
+
+    # ---------- Reports ----------
+
+    ReportInclude:
+      type: object
+      properties:
+        html:
+          type: boolean
+          default: true
+          description: Include HTML report.
+        csv:
+          type: boolean
+          default: true
+          description: Include CSV export.
+        pdf:
+          type: boolean
+          default: false
+          description: Include PDF report.
+        docx:
+          type: boolean
+          default: false
+          description: Include DOCX report.
+
+    ReportRequest:
+      type: object
+      required:
+        - question
+        - sql
+        - columns
+        - rows
+      properties:
+        title:
+          type: string
+          description: Report title.
+          default: NL→SQL Report
+        question:
+          type: string
+          description: Original natural language question (or rephrased query).
+        sql:
+          type: string
+          description: Final SQL that produced the data.
+        columns:
+          type: array
+          description: Column names of the result set.
+          items:
+            type: string
+        rows:
+          type: array
+          description: Rows returned by the query.
+          items:
+            type: array
+            items:
+              nullable: true
+        model:
+          type: string
+          nullable: true
+          description: Optional model label (e.g. 'qwen3-coder:30b').
+        gen_ms:
+          type: integer
+          nullable: true
+          description: Total pipeline generation time (ms).
+        exec_ms:
+          type: integer
+          nullable: true
+          description: DB execution time (ms).
+        rows_est:
+          type: string
+          nullable: true
+          description: Estimated row count (stringified).
+          default: "-"
+        generated_by:
+          type: string
+          nullable: true
+          description: System/assistant name.
+          default: ATS SQLBot
+        include:
+          $ref: '#/components/schemas/ReportInclude'
+
+    ReportResponse:
+      type: object
+      properties:
+        html:
+          type: string
+          nullable: true
+          description: Rendered HTML report (if requested).
+        csv_base64:
+          type: string
+          nullable: true
+          description: CSV bytes, base64-encoded (if requested).
+        pdf_base64:
+          type: string
+          nullable: true
+          description: PDF bytes, base64-encoded (if requested).
+        docx_base64:
+          type: string
+          nullable: true
+          description: DOCX bytes, base64-encoded (if requested).

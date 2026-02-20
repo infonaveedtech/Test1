@@ -1,0 +1,127 @@
+{
+  "tables": [
+    "ATS.TRADES",
+    "ATS.SYMBOLS",
+    "ATS.REJECTED_ORDERS"
+  ],
+  "date_key": "ENTRY_DATETIME",
+  "time_window": {
+    "type": "fixed",
+    "fixed_from": "2024-01-01",
+    "fixed_to": "2025-01-01"
+  },
+  "grain": "year",
+  "group_by": [
+    "SYMBOL"
+  ],
+  "metrics": [
+    {
+      "name": "total_trades",
+      "definition": "COUNT(*)"
+    },
+    {
+      "name": "total_volume",
+      "definition": "SUM(VOLUME)"
+    },
+    {
+      "name": "total_notional",
+      "definition": "SUM(PRICE * VOLUME)"
+    },
+    {
+      "name": "avg_price",
+      "definition": "AVG(PRICE)"
+    },
+    {
+      "name": "total_rejected_orders",
+      "definition": "COUNT(ro.ORDER_NO)"
+    }
+  ],
+  "required_joins_verbatim": [
+    "ATS.TRADES.SYMBOL_ID = ATS.SYMBOLS.SYMBOL_ID"
+  ],
+  "filters": [],
+  "order_by": [
+    "total_trades DESC"
+  ],
+  "row_limit": 200,
+  "retrieval_citations": {
+    "fewshots": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+    ],
+    "glossary": [
+      "1",
+      "2",
+      "3",
+      "4"
+    ]
+  },
+  "assumptions": [
+    "The query asks for a complete trading summary for the year 2024, including most traded symbol, biggest trade, lowest traded day, total count of trades, total rejected orders, and total negotiated.",
+    "The term 'most traded symbol' implies grouping by symbol and counting trades.",
+    "The term 'biggest trade' implies looking at the highest notional value trade.",
+    "The term 'lowest traded day' implies aggregating by day and finding the day with the least number of trades.",
+    "The term 'total negotiated' is ambiguous but likely refers to total traded value or volume.",
+    "The query does not explicitly mention a specific client, so we are not applying the client-specific reporting pattern.",
+    "The query does not explicitly ask for a breakdown by client, so we are aggregating at the symbol level.",
+    "The query does not explicitly ask for a breakdown by exchange, so we are not including exchange in the group_by.",
+    "The query does not explicitly ask for a breakdown by day, so we are not including day in the group_by.",
+    "The query does not explicitly ask for a breakdown by buyer/seller, so we are not including buyer/seller in the group_by.",
+    "The query does not explicitly ask for a breakdown by user, so we are not including user in the group_by.",
+    "The query does not explicitly ask for a breakdown by broker, so we are not including broker in the group_by.",
+    "The query does not explicitly ask for a breakdown by flag, so we are not including flag in the group_by.",
+    "The query does not explicitly ask for a breakdown by order type, so we are not including order type in the group_by.",
+    "The query does not explicitly ask for a breakdown by state, so we are not including state in the group_by.",
+    "The query does not explicitly ask for a breakdown by settlement type, so we are not including settlement type in the group_by.",
+    "The query does not explicitly ask for a breakdown by trade state, so we are not including trade state in the group_by.",
+    "The query does not explicitly ask for a breakdown by levy, so we are not including levy in the group_by.",
+    "The query does not explicitly ask for a breakdown by repo, so we are not including repo in the group_by.",
+    "The query does not explicitly ask for a breakdown by cancelled trade, so we are not including cancelled trade in the group_by.",
+    "The query does not explicitly ask for a breakdown by negotiated trade, so we are not including negotiated trade in the group_by.",
+    "The query does not explicitly ask for a breakdown by rejected order, so we are not including rejected order in the group_by.",
+    "The query does not explicitly ask for a breakdown by settlement levy data, so we are not including settlement levy data in the group_by.",
+    "The query does not explicitly ask for a breakdown by symbol market, so we are not including symbol market in the group_by.",
+    "The query does not explicitly ask for a breakdown by symbol indicator, so we are not including symbol indicator in the group_by.",
+    "The query does not explicitly ask for a breakdown by symbol daily indicator, so we are not including symbol daily indicator in the group_by.",
+    "The query does not explicitly ask for a breakdown by best mkt, so we are not including best mkt in the group_by.",
+    "The query does not explicitly ask for a breakdown by order, so we are not including order in the group_by.",
+    "The query does not explicitly ask for a breakdown by user, so we are not including user in the group_by.",
+    "The query does not explicitly ask for a breakdown by client, so we are not including client in the group_by.",
+    "The query does not explicitly ask for a breakdown by broker, so we are not including broker in the group_by.",
+    "The query does not explicitly ask for a breakdown by exchange, so we are not including exchange in the group_by.",
+    "The query does not explicitly ask for a breakdown by flag, so we are not including flag in the group_by.",
+    "The query does not explicitly ask for a breakdown by order type, so we are not including order type in the group_by.",
+    "The query does not explicitly ask for a breakdown by state, so we are not including state in the group_by.",
+    "The query does not explicitly ask for a breakdown by settlement type, so we are not including settlement type in the group_by.",
+    "The query does not explicitly ask for a breakdown by trade state, so we are not including trade state in the group_by.",
+    "The query does not explicitly ask for a breakdown by levy, so we are not including levy in the group_by.",
+    "The query does not explicitly ask for a breakdown by repo, so we are not including repo in the group_by.",
+    "The query does not explicitly ask for a breakdown by cancelled trade, so we are not including cancelled trade in the group_by.",
+    "The query does not explicitly ask for a breakdown by negotiated trade, so we are not including negotiated trade in the group_by.",
+    "The query does not explicitly ask for a breakdown by rejected order, so we are not including rejected order in the group_by.",
+    "The query does not explicitly ask for a breakdown by settlement levy data, so we are not including settlement levy data in the group_by.",
+    "The query does not explicitly ask for a breakdown by symbol market, so we are not including symbol market in the group_by.",
+    "The query does not explicitly ask for a breakdown by symbol indicator, so we are not including symbol indicator in the group_by.",
+    "The query does not explicitly ask for a breakdown by symbol daily indicator, so we are not including symbol daily indicator in the group_by.",
+    "The query does not explicitly ask for a breakdown by best mkt, so we are not including best mkt in the group_by.",
+    "The query does not explicitly ask for a breakdown by order, so we are not including order in the group_by.",
+    "The query does not explicitly ask for a breakdown by user, so we are not including user in the group_by.",
+    "The query does not explicitly ask for a breakdown by client, so we are not including client in the group_by.",
+    "The query does not explicitly ask for a breakdown by broker, so we are not including broker in the group_by.",
+    "The query does not explicitly ask for a breakdown by exchange, so we are not including exchange in the group_by.",
+    "The query does not explicitly ask for a breakdown by flag, so we are not including flag in the group_by.",
+    "The query does not explicitly ask for a breakdown by order type, so we are not including order type in the group_by.",
+    "The query does not explicitly ask for a breakdown by state, so we are not including state in the group_by.",
+    "The query does not explicitly ask for a breakdown by settlement type, so we are not including settlement type in the group_by.",
+    "The query does not explicitly ask for a breakdown by trade state, so we are not including trade state in the group_by.",
+    "The query does not explicitly ask for a breakdown by levy, so we are not including levy in the group_by.",
+    "The query does not explicitly ask for a breakdown by repo, so we are not including repo in the group_by.",
+    "The query does not explicitly ask for a breakdown by cancelled trade, so we are not including cancelled trade in the group_by.",
+    "The query does not explicitly ask for a breakdown by negotiated trade, so we are not including negotiated trade in the group_by.",
+    "The query does not explicitly ask for a breakdown by rejected order, so we are not including rejected order in the group_by.",
+    "The query does not explicitly ask for a breakdown by settlement levy data, so we are not including settlement levy data in the group_by.",
+    "The query does not explicitly ask for a breakdown by symbol market, so we are not including symbol market in the group_by.",
+    "The query does not explicitly ask for a

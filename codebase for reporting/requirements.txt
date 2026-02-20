@@ -1,0 +1,27 @@
+# Core app + UI
+streamlit
+
+# RAG + embeddings
+sentence-transformers
+faiss-cpu
+rank-bm25
+numpy
+tqdm
+ujson
+
+# Optional / future-facing: DB, LLM host, document export
+oracledb
+ollama
+pdfkit
+pypdf
+xhtml2pdf
+reportlab
+python-docx
+
+fastapi
+uvicorn
+requests
+# we need dot env
+
+python-dotenv
+python-jose[cryptography]

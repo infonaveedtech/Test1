@@ -1,0 +1,4 @@
+Look into this solution in great detail, make sure u gi through each file and each folder . The pipeline is mainly doing NL->SQL and then report generation. 
+There will be 2 main entrypoints. I have also created a Docker IMage for the Backend as well. 
+
+Once you are done with all files all folders all docs from a to z, we will move towards further development, The complete ZIP is shared with you

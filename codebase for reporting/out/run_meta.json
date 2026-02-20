@@ -1,0 +1,13 @@
+{
+  "timestamp": "2025-11-13 16:54:15",
+  "host": "http://localhost:11434",
+  "models": {
+    "agent1": "llama3.1:70b",
+    "agent2": "llama3.1:70b",
+    "agent3": "llama3.1:70b"
+  },
+  "num_ctx": 32000,
+  "temperature": 0.0,
+  "enable_agent3": true,
+  "query": "Top 10 brokers which were most profitable in 2024"
+}

@@ -1,0 +1,10 @@
+{
+  "fewshots": {
+    "active_path": "data/faiss/fewshots_v2025-11-10",
+    "version": "2025-11-10"
+  },
+  "glossary": {
+    "active_path": "data/faiss/glossary_v2025-11-10",
+    "version": "2025-11-10"
+  }
+}

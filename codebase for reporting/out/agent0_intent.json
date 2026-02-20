@@ -1,0 +1,12 @@
+{
+  "should_run_pipeline": true,
+  "intent": "sql_query",
+  "reason": "User is asking for specific client information based on trading activity, which involves querying business data.",
+  "assistant_reply": "Got it — I'll build a report for that.",
+  "rephrased_query": "Identify the client who has started accumulation of a specific symbol within their last 50 trades and provide complete information about this client.",
+  "safety": {
+    "is_potentially_unsafe": false,
+    "notes": "No destructive or DDL instructions."
+  },
+  "__raw__": "```json\n{\n  \"should_run_pipeline\": true,\n  \"intent\": \"sql_query\",\n  \"reason\": \"User is asking for specific client information based on trading activity, which involves querying business data.\",\n  \"assistant_reply\": \"Got it — I'll build a report for that.\",\n  \"rephrased_query\": \"Identify the client who has started accumulation of a specific symbol within their last 50 trades and provide complete information about this client.\",\n  \"safety\": {\n    \"is_potentially_unsafe\": false,\n    \"notes\": \"No destructive or DDL instructions.\"\n  }\n}\n```"
+}
